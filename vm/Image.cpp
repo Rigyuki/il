@@ -4,9 +4,11 @@
 #include <limits>
 #include "os/Mutex.h"
 #include "utils/StringUtils.h"
+#include "vm/Array.h"
 #include "vm/Class.h"
 #include "vm/Image.h"
 #include "vm/MetadataCache.h"
+#include "vm/Reflection.h"
 #include "vm/StackTrace.h"
 #include "vm/Type.h"
 #include "utils/HashUtils.h"
@@ -18,10 +20,10 @@
 #include "Baselib.h"
 #include "Cpp/ReentrantLock.h"
 
-// ==={{ huatuo
+// ==={{ hybridclr
 #include "os/Atomic.h"
-#include "huatuo/metadata/Image.h"
-// ===}} huatuo
+#include "hybridclr/metadata/Image.h"
+// ===}} hybridclr
 
 struct NamespaceAndNamePairHash
 {
@@ -175,14 +177,14 @@ namespace vm
         void *iter = NULL;
         while (Il2CppMetadataTypeHandle nestedClass = MetadataCache::GetNestedTypes(handle, &iter))
         {
-            // ==={{ huatuo
+            // ==={{ hybridclr
             AddNestedTypesToNametoClassHashTable(image, table, namespaceAndName.first, namespaceAndName.second, nestedClass);
-            // ===}} huatuo
+            // ===}} hybridclr
         }
     }
 
 // This must be called when the s_ClassFromNameMutex is held.
-    // ==={{ huatuo
+    // ==={{ hybridclr
     static void AddTypeToNametoClassHashTable(const Il2CppImage* image, Il2CppNameToTypeHandleHashTable* table, Il2CppMetadataTypeHandle typeHandle)
     {
         if (typeHandle == NULL)
@@ -197,7 +199,7 @@ namespace vm
 
         table->insert(std::make_pair(MetadataCache::GetTypeNamespaceAndName(typeHandle), typeHandle));
     }
-    // ===}} huatuo
+    // ===}} hybridclr
 
     void Image::InitNestedTypes(const Il2CppImage *image)
     {
@@ -209,9 +211,9 @@ namespace vm
             if (MetadataCache::TypeIsNested(handle))
                 return;
 
-            // ==={{ huatuo
+            // ==={{ hybridclr
             AddNestedTypesToNametoClassHashTable(image, image->nameToClassHashTable, handle);
-            // ===}} huatuo
+            // ===}} hybridclr
         }
 
         for (uint32_t index = 0; index < image->exportedTypeCount; index++)
@@ -221,9 +223,9 @@ namespace vm
             // don't add nested types
             if (MetadataCache::TypeIsNested(handle))
                 return;
-            // ==={{ huatuo
+            // ==={{ hybridclr
             AddNestedTypesToNametoClassHashTable(image, image->nameToClassHashTable, handle);
-            // ===}} huatuo
+            // ===}} hybridclr
         }
     }
 
@@ -234,7 +236,7 @@ namespace vm
             os::FastAutoLock lock(&s_ClassFromNameMutex);
             if (!image->nameToClassHashTable)
             {
-                // ==={{ huatuo
+                // ==={{ hybridclr
                 // image->nameToClassHashTable = new Il2CppNameToTypeHandleHashTable(); --- il2cpp
                 auto nameToClassHashTable = new Il2CppNameToTypeHandleHashTable();
                 for (uint32_t index = 0; index < image->typeCount; index++)
@@ -248,7 +250,7 @@ namespace vm
                 }
                 os::Atomic::FullMemoryBarrier();
                 image->nameToClassHashTable = nameToClassHashTable;
-                // ===}} huatuo
+                // ===}} hybridclr
             }
         }
 
@@ -259,9 +261,26 @@ namespace vm
         return NULL;
     }
 
+    static bool IsExported(const Il2CppClass* type)
+    {
+        if ((type->flags & TYPE_ATTRIBUTE_VISIBILITY_MASK) == TYPE_ATTRIBUTE_PUBLIC)
+        {
+            return true;
+        }
+
+        if ((type->flags & TYPE_ATTRIBUTE_VISIBILITY_MASK) == TYPE_ATTRIBUTE_NESTED_PUBLIC)
+        {
+            IL2CPP_ASSERT(type->declaringType);
+            return IsExported(type->declaringType);
+        }
+
+        return false;
+    }
+
     void Image::GetTypes(const Il2CppImage* image, bool exportedOnly, TypeVector* target)
     {
         uint32_t typeCount = Image::GetNumTypes(image);
+        target->reserve(typeCount);
 
         for (uint32_t sourceIndex = 0; sourceIndex < typeCount; sourceIndex++)
         {
@@ -270,9 +289,29 @@ namespace vm
             {
                 continue;
             }
+            if (exportedOnly && !IsExported(type))
+            {
+                continue;
+            }
 
             target->push_back(type);
         }
+    }
+
+    Il2CppArray* Image::GetTypes(const Il2CppImage* image, bool exportedOnly)
+    {
+        TypeVector types;
+        GetTypes(image, exportedOnly, &types);
+        Il2CppArray* result = Array::New(il2cpp_defaults.monotype_class, (il2cpp_array_size_t)types.size());
+        size_t index = 0;
+        for (vm::TypeVector::const_iterator type = types.begin(); type != types.end(); ++type)
+        {
+            Il2CppReflectionType* reflectionType = Reflection::GetTypeObject(&(*type)->byval_arg);
+            il2cpp_array_setref(result, index, reflectionType);
+            index++;
+        }
+
+        return result;
     }
 
     uint32_t Image::GetNumTypes(const Il2CppImage* image)
@@ -310,9 +349,9 @@ namespace vm
             }
         }
 
-        // ==={{ huatuo
+        // ==={{ hybridclr
         std::pair<const char*, const char*> namespaceAndName = MetadataCache::GetTypeNamespaceAndName(typeHandle);
-        // ===}} huatuo
+        // ===}} hybridclr
         return StringsMatch(namespaze, namespaceAndName.first, ignoreCase) && StringsMatch(name, namespaceAndName.second, ignoreCase);
     }
 

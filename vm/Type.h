@@ -218,7 +218,7 @@ namespace vm
         static Il2CppArray* GetGenericArgumentsInternal(Il2CppReflectionType* type, bool runtimeArray);
         static bool IsEqualToType(const Il2CppType *type, const Il2CppType *otherType);
         static Il2CppReflectionType* GetTypeFromHandle(intptr_t handle);
-
+        static void InvokeDelegateConstructor(Il2CppDelegate* delegate, Il2CppObject* target, const MethodInfo* method);
     public:
         // internal
         static void GetNameChunkedRecurseInternal(const Il2CppType * type, Il2CppTypeNameFormat format, bool is_nested, void(*reportFunc)(void *data, void *userData), void * userData);
@@ -226,10 +226,11 @@ namespace vm
         static bool IsReference(const Il2CppType* type);
         static bool IsStruct(const Il2CppType* type);
         static bool GenericInstIsValuetype(const Il2CppType* type);
+        static bool HasVariableRuntimeSizeWhenFullyShared(const Il2CppType* type);
 
         static bool IsEnum(const Il2CppType *type);
         static bool IsValueType(const Il2CppType *type);
-        static bool IsEmptyType(const Il2CppType *type);
+        static bool IsPointerType(const Il2CppType *type);
 
         static bool IsSystemDBNull(const Il2CppType *type);
         static bool IsSystemDateTime(const Il2CppType *type);
@@ -240,7 +241,9 @@ namespace vm
         static Il2CppGenericParameterInfo GetGenericParameterInfo(const Il2CppType *type);
         static const Il2CppType* GetGenericTypeDefintion(const Il2CppType* type);
 
-        static void ConstructDelegate(Il2CppDelegate* delegate, Il2CppObject* target, Il2CppMethodPointer addr, const MethodInfo* method);
+        static void ConstructDelegate(Il2CppDelegate* delegate, Il2CppObject* target, const MethodInfo* method);
+        static void ConstructClosedDelegate(Il2CppDelegate* delegate, Il2CppObject* target, Il2CppMethodPointer addr, const MethodInfo* method);
+        static void SetClosedDelegateInvokeMethod(Il2CppDelegate* delegate, Il2CppObject* target, Il2CppMethodPointer addr);
 
         static Il2CppString* AppendAssemblyNameIfNecessary(Il2CppString* typeName, const MethodInfo* callingMethod);
     };

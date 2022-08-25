@@ -7,11 +7,11 @@
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class-internals.h"
 
-// ==={{ huatuo
+// ==={{ hybridclr
 #include "Baselib.h"
 #include "Cpp/ReentrantLock.h"
 #include "os/Atomic.h"
-// ===}} huatuo
+// ===}} hybridclr
 
 #include <vector>
 #include <string>
@@ -20,27 +20,53 @@ namespace il2cpp
 {
 namespace vm
 {
-    // ==={{ huatuo
+    // ==={{ hybridclr
     static baselib::ReentrantLock s_assemblyLock;
     // copy on write
     static AssemblyVector s_emptyAssemblies;
-    static AssemblyVector* s_Assemblies = nullptr;
-    // ===}} huatuo
+    static AssemblyVector* s_Assemblies = &s_emptyAssemblies;
+    static AssemblyVector* s_lastValidAssemblies = &s_emptyAssemblies;
+    // ===}} hybridclr
 
     AssemblyVector* Assembly::GetAllAssemblies()
     {
-// ==={{ huatuo
-        AssemblyVector* assembly = os::Atomic::ReadPointer(&s_Assemblies);
-        return assembly ? assembly : &s_emptyAssemblies;
-// ===}} huatuo
+        os::FastAutoLock lock(&s_assemblyLock);
+
+        size_t validAssCount = 0;
+        bool assemblyChange = false;
+        for (AssemblyVector::const_iterator assIt = s_Assemblies->begin(); assIt != s_Assemblies->end(); ++assIt)
+        {
+            const Il2CppAssembly* ass = *assIt;
+            if (ass->token == 0)
+            {
+                continue;
+            }
+            if (s_lastValidAssemblies->size() <= validAssCount || (*s_lastValidAssemblies)[validAssCount] != ass)
+            {
+                assemblyChange = true;
+                break;
+            }
+            ++validAssCount;
+        }
+        if (assemblyChange)
+        {
+            s_lastValidAssemblies = new AssemblyVector();
+            for (AssemblyVector::const_iterator assIt = s_Assemblies->begin(); assIt != s_Assemblies->end(); ++assIt)
+            {
+                const Il2CppAssembly* ass = *assIt;
+                if (ass->token)
+                {
+                    s_lastValidAssemblies->push_back(ass);
+                }
+            }
+        }
+        return s_lastValidAssemblies;
     }
 
     const Il2CppAssembly* Assembly::GetLoadedAssembly(const char* name)
     {
-// ==={{ huatuo
         AssemblyVector& assemblies = *GetAllAssemblies();
         for (AssemblyVector::const_iterator assembly = assemblies.begin(); assembly != assemblies.end(); ++assembly)
-// ===}} huatuo
         {
             if (strcmp((*assembly)->aname.name, name) == 0)
                 return *assembly;
@@ -79,7 +105,7 @@ namespace vm
 
     const Il2CppAssembly* Assembly::Load(const char* name)
     {
-// ==={{ huatuo
+// ==={{ hybridclr
         const Il2CppAssembly* loadedAssembly = MetadataCache::GetAssemblyByName(name);
         if (loadedAssembly)
         {
@@ -115,12 +141,12 @@ namespace vm
         {
             return MetadataCache::LoadAssemblyByName(name);
         }
-// ===}} huatuo
+// ===}} hybridclr
     }
 
     void Assembly::Register(const Il2CppAssembly* assembly)
     {
-// ==={{ huatuo
+// ==={{ hybridclr
         os::FastAutoLock lock(&s_assemblyLock);
 
         AssemblyVector* oldAssemblies = s_Assemblies;
@@ -128,20 +154,19 @@ namespace vm
         // TODO IL2CPP_MALLOC ???
         AssemblyVector* newAssemblies = oldAssemblies ? new AssemblyVector(*oldAssemblies) : new AssemblyVector();
         newAssemblies->push_back(assembly);
-
-        os::Atomic::FullMemoryBarrier();
-        os::Atomic::ExchangePointer(&s_Assemblies, newAssemblies);
+        s_Assemblies = newAssemblies;
+        // can't delete oldAssemblies because may be using by other thread
         if (oldAssemblies)
         {
             // can't delete
             // delete oldAssemblies;
         }
-// ===}} huatuo
+// ===}} hybridclr
     }
 
     void Assembly::ClearAllAssemblies()
     {
-// ==={{ huatuo
+// ==={{ hybridclr
         os::FastAutoLock lock(&s_assemblyLock);
         AssemblyVector* oldAssemblies = s_Assemblies;
         s_Assemblies = nullptr;
@@ -149,7 +174,7 @@ namespace vm
         {
             // TODO ???
         }
-// ===}} huatuo
+// ===}} hybridclr
     }
 
     void Assembly::Initialize()
